@@ -1,0 +1,129 @@
+#for dataset
+#https://archive.ics.uci.edu/dataset/296/diabetes+130-us+hospitals+for+years+1999-2008
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score, confusion_matrix, ConfusionMatrixDisplay
+
+df = pd.read_csv('/diabetic_data.csv')
+
+print("Dataset shape:", df.shape)
+
+df.head()
+
+print("\nDataset Information:")
+df.info()
+
+df = df.replace('?', np.nan)
+
+print("\nMissing Values:")
+print(df.isnull().sum())
+
+print("\nDuplicate Rows:")
+print(df.duplicated().sum())
+
+print("Duplicates before:", df.duplicated().sum())
+
+df = df.drop_duplicates()
+
+print("Duplicates after:", df.duplicated().sum())
+
+df['readmitted_30'] = (df['readmitted'] == '<30').astype(int)
+
+print("\n30-Day Readmission Distribution:")
+print(df['readmitted_30'].value_counts())
+
+features = [
+    'age',
+    'gender',
+    'time_in_hospital',
+    'num_lab_procedures',
+    'num_procedures',
+    'num_medications',
+    'number_outpatient',
+    'number_emergency',
+    'number_inpatient',
+    'number_diagnoses',
+    'A1Cresult',
+    'insulin',
+    'diabetesMed'
+]
+
+X = df[features]
+y = df['readmitted_30']
+
+numerical_cols = X.select_dtypes(include=np.number).columns
+categorical_cols = X.select_dtypes(include='object').columns
+
+for col in numerical_cols:
+    X[col] = X[col].fillna(X[col].median())
+
+for col in categorical_cols:
+    X[col] = X[col].fillna(X[col].mode()[0])
+
+print("Missing values after handling:")
+print(X.isnull().sum())
+
+X = pd.get_dummies(X, drop_first=True)
+
+print("Features after encoding:", X.shape)
+
+X.head()
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+model = LogisticRegression(
+    penalty='l2',
+    C=0.2,
+    class_weight='balanced',
+    max_iter=1000
+)
+
+model.fit(X_train_scaled, y_train)
+
+y_prob = model.predict_proba(X_test_scaled)[:, 1]
+
+print(y_prob[:10])
+
+roc_auc = roc_auc_score(y_test, y_prob)
+
+print("ROC-AUC Score:", roc_auc)
+
+y_pred = (y_prob >= 0.5).astype(int)
+
+print(y_pred[:20])
+
+cm = confusion_matrix(y_test, y_pred)
+
+print("Confusion Matrix:")
+print(cm)
+
+ConfusionMatrixDisplay(
+    confusion_matrix=cm,
+    display_labels=['No Readmission', 'Readmitted']
+).plot()
+
+plt.title('Confusion Matrix - 30-Day Readmission')
+plt.show()
+
+TN, FP, FN, TP = cm.ravel()
+
+print("True Negatives :", TN)
+print("False Positives:", FP)
+print("False Negatives:", FN)
+print("True Positives :", TP)
